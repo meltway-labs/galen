@@ -7,7 +7,10 @@ import os
 import click
 import requests
 import appdirs
-import tomli
+import toml
+
+CONFIG_FOLDER_NAME = "galen"
+CONFIG_FILE_NAME = "config.toml"
 
 def warning(msg):
     click.secho(msg, fg="yellow", err=True)
@@ -21,20 +24,37 @@ def handler(signum, frame):
     sys.exit(0)
 
 
-def get_config():
-    user_config = appdirs.user_config_dir("galen")
-    if not os.path.exists(user_config):
-        # create empty config dir
-        os.makedirs(user_config)
-        # create empty config file
-        with open(os.path.join(user_config, "config.toml"), "w") as f:
-            pass
+def create_empty_config():
+    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
+    # create empty config dir
+    os.makedirs(config_dir)
+    # create empty config file
+    with open(os.path.join(config_dir, CONFIG_FILE_NAME), "w") as f:
+        pass
 
+
+def read_config():
+    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
     # read toml config from file
-    with open(os.path.join(user_config, "config.toml"), "r") as f:
-        config = tomli.loads(f.read())
+    with open(os.path.join(config_dir, CONFIG_FILE_NAME), "r") as f:
+        config = toml.loads(f.read())
 
     return config
+
+
+def write_config(config):
+    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
+    # create empty config file
+    with open(os.path.join(config_dir, CONFIG_FILE_NAME), "w") as f:
+        tomli.dump(config, f)
+
+
+def get_config():
+    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
+    if not os.path.exists(config_dir):
+        create_empty_config()
+
+    return read_config()
 
 
 @click.group()
@@ -91,6 +111,7 @@ def tail(filter_query, endpoint, extra_filter, number, ticker, delta):
         filter_query += extra_filter
 
     user_config = get_config()
+    print("config", user_config)
 
     payload = {
         "size": number,
