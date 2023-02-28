@@ -22,3 +22,5 @@ jobs:
           poetry-version: ${{ matrix.poetry-version }}
       - name: Install dependencies with poetry
         run: poetry install
+      - name: Run the help command
+        run: poetry run python3 galen/main.py --help
