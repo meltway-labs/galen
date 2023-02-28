@@ -9,13 +9,17 @@ me@box:~$ galen profile list
 default
 dev
 
-# create a new profile
-me@box:~$ galen profile new prd --endpoint https://production-elastic.com
-Created profile 'prd'
+me@box:~$ # create a new profile
+me@box:~$ galen profile new prd --endpoint https://prd-elastic.com
+Created profile 'prd'.
 
 me@box:~$ # create a new profile with auth from stdin
 me@box:~$ galen profile new prd --endpoint https://prd-elastic.com --auth-from-stdin < production-basic-auth
-Created profile 'prd'
+Created profile 'prd'.
+
+me@box:~$ # set profile as default
+me@box:~$ galen profile set-default prd
+Profile 'prd' is now the default profile.
 
 me@box:~$ # tail for logs containing the text "request error"
 me@box:~$ galen --profile prd tail "request error"
