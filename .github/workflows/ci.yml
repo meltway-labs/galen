@@ -9,7 +9,7 @@ jobs:
       matrix:
         python-version: ["3.9", "3.11"]
         poetry-version: ["1.4"]
-        os: [ubuntu-18.04, macos-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -23,4 +23,4 @@ jobs:
       - name: Install dependencies with poetry
         run: poetry install
       - name: Run the help command
-        run: poetry run python3 galen/main.py --help
+        run: poetry run galen --help
