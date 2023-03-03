@@ -71,7 +71,7 @@ def update(ctx, name, number, ticker, delta, endpoint, index, username, password
     if username is not None:
         profile["username"] = username
 
-    if password is not None:
+    if password:
         for line in sys.stdin:
             profile["password"] = line.strip()
 

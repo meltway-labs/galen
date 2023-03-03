@@ -1,7 +1,9 @@
 import os
+import sys
 
 import appdirs
 import toml
+import click
 
 CONFIG_FOLDER_NAME = "galen"
 CONFIG_FILE_NAME = "config.toml"
@@ -15,7 +17,7 @@ def error(msg):
     click.secho(msg, fg="red", err=True)
 
 
-def handler(signum, frame):
+def signal_handler(signum, frame):
     sys.exit(0)
 
 

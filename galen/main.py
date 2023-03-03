@@ -1,8 +1,9 @@
 import os
 from gettext import gettext as _
+import signal
 
 import click
-from galen.utils import get_config, error
+from galen.utils import get_config, error, signal_handler
 
 cmd_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "commands"))
 
@@ -87,6 +88,7 @@ CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 @click.pass_context
 def main(ctx, profile):
     """Like `tail -f` but for ElasticSearch."""
+    signal.signal(signal.SIGINT, signal_handler)
 
     ctx.ensure_object(dict)
 

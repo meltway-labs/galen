@@ -41,7 +41,6 @@ from galen.utils import error
 @click.pass_context
 def tail(ctx, filter_query, extra_filter, number, ticker, delta):
     """Like `tail -f` but for ElasticSearch."""
-    click.echo("Tail")
 
     if extra_filter:
         filter_query += extra_filter
@@ -54,7 +53,7 @@ def tail(ctx, filter_query, extra_filter, number, ticker, delta):
     number = profile["number"]
     ticker = profile["ticker"]
     delta = profile["delta"]
-    index = urllib.parse.quote(index)
+    index = urllib.parse.quote(profile["index"])
 
     elasticsearch_endpoint = f"{endpoint}/{index}/_search"
 
@@ -83,7 +82,8 @@ def tail(ctx, filter_query, extra_filter, number, ticker, delta):
     headers = {}
     if "username" in profile:
         auth = profile["username"] + ":" + profile["password"]
-        headers = {"Authorization": "Basic " + base64.b64encode(auth.encode("utf-8"))}
+        auth_enc = base64.b64encode(auth.encode("utf-8")).decode("utf-8")
+        headers = {"Authorization": "Basic " + auth_enc}
 
     first = True
     response = {}
@@ -117,7 +117,13 @@ def tail(ctx, filter_query, extra_filter, number, ticker, delta):
             continue
 
         for item in response["hits"]["hits"]:
-            click.secho(item["_source"]["@timestamp"] + "\t- ", fg="blue", nl=False)
+            # convert string to datetime timestamp
+            timestamp = datetime.datetime.strptime(
+                item["_source"]["@timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ"
+            ).isoformat(timespec="milliseconds")
+
+            # print timestamp in milliseconds using iso format
+            click.secho(timestamp + "\t- ", fg="blue", nl=False)
             click.echo(item["_source"]["message"].strip())
 
         time.sleep(ticker)
