@@ -23,4 +23,4 @@ jobs:
       - name: Install dependencies with poetry
         run: poetry install
       - name: Run the help command
-        run: poetry run galen --help
+        run: galen --help
