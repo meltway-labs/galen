@@ -1,172 +1,107 @@
-import datetime
-import signal
-import sys
-import time
 import os
+from gettext import gettext as _
 
 import click
-import requests
-import appdirs
-import toml
+from galen.utils import get_config, error
 
-CONFIG_FOLDER_NAME = "galen"
-CONFIG_FILE_NAME = "config.toml"
-
-def warning(msg):
-    click.secho(msg, fg="yellow", err=True)
+cmd_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), "commands"))
 
 
-def error(msg):
-    click.secho(msg, fg="red", err=True)
+class GalenGroup(click.Group):
+    def format_commands(self, ctx, formatter):
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            if subcommand.startswith("GROUP_"):
+                cmd = self.get_command(ctx, subcommand[6:])
+            else:
+                cmd = self.get_command(ctx, subcommand)
+            # Ignore non-existing commands
+            if cmd is None:
+                continue
+            if cmd.hidden:
+                continue
+
+            commands.append((subcommand, cmd))
+
+        # allow for 3 times the default spacing
+        if len(commands) == 0:
+            return
+
+        limit = formatter.width - 6 - max(len(cmd[0]) for cmd in commands)
+
+        rows = []
+        groups = []
+        for subcommand, cmd in commands:
+            help = cmd.get_short_help_str(limit)
+            if subcommand.startswith("GROUP_"):
+                groups.append((subcommand[6:], help))
+            else:
+                rows.append((subcommand, help))
+
+        if groups:
+            with formatter.section(_("Command Groups")):
+                formatter.write_dl(groups)
+
+        if rows:
+            with formatter.section(_("Commands")):
+                formatter.write_dl(rows)
+
+    def list_commands(self, ctx):
+        commands = []
+        groups = []
+        for filename in os.listdir(cmd_folder):
+            if filename.endswith(".py") and not filename.startswith("__init__"):
+                commands.append(filename[:-3])
+            if not filename.endswith(".py"):
+                for group_filename in os.listdir(os.path.join(cmd_folder, filename)):
+                    if group_filename == "__init__.py":
+                        groups.append(f"GROUP_{filename}")
+
+        commands.sort()
+        groups.sort()
+        return groups + commands
+
+    def get_command(self, ctx, name):
+        try:
+            mod = __import__(f"galen.commands.{name}", None, None, [name])
+        except ImportError as e:
+            print(f"Can't import command {name}. Exception: {e}")
+            return
+        return getattr(mod, name)
 
 
-def handler(signum, frame):
-    sys.exit(0)
+CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
 
-def create_empty_config():
-    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
-    # create empty config dir
-    os.makedirs(config_dir)
-    # create empty config file
-    with open(os.path.join(config_dir, CONFIG_FILE_NAME), "w") as f:
-        pass
-
-
-def read_config():
-    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
-    # read toml config from file
-    with open(os.path.join(config_dir, CONFIG_FILE_NAME), "r") as f:
-        config = toml.loads(f.read())
-
-    return config
-
-
-def write_config(config):
-    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
-    # create empty config file
-    with open(os.path.join(config_dir, CONFIG_FILE_NAME), "w") as f:
-        tomli.dump(config, f)
-
-
-def get_config():
-    config_dir = appdirs.user_config_dir(CONFIG_FOLDER_NAME)
-    if not os.path.exists(config_dir):
-        create_empty_config()
-
-    return read_config()
-
-
-@click.group()
-def main():
-    pass
-
-@click.command()
-def profile():
-    pass
-
-@click.command()
-@click.argument("filter_query", required=True)
-@click.option(
-    "--endpoint",
-    help="Elasticsearch endpoint with index pattern",
-    required=True,
-)
-@click.option(
-    "-n",
-    "--number",
-    default=100,
-    show_default=True,
-    help="Number of lines to fetch on each iteration.",
-)
-@click.option(
-    "-t",
-    "--ticker",
-    default=3,
-    show_default=True,
-    type=float,
-    help="Interval in seconds to call ElasticSearch API.",
-)
-@click.option(
-    "-d",
-    "--delta",
-    default=30,
-    show_default=True,
-    help="Number of seconds in the past to start querying data.",
-)
-@click.option(
-    "--extra-filter",
-    default=None,
-    type=str,
-    help="Extra filter appended to filter.",
+@click.group(
+    cls=GalenGroup,
+    context_settings=CONTEXT_SETTINGS,
 )
 @click.version_option()
-def tail(filter_query, endpoint, extra_filter, number, ticker, delta):
+@click.option(
+    "--profile",
+    default=None,
+    type=str,
+    help="Pick the profile to use.",
+)
+@click.pass_context
+def main(ctx, profile):
     """Like `tail -f` but for ElasticSearch."""
-    signal.signal(signal.SIGINT, handler)
 
-    elasticsearch_endpoint = f"{endpoint}/_search"
-
-    if extra_filter:
-        filter_query += extra_filter
+    ctx.ensure_object(dict)
 
     user_config = get_config()
-    print("config", user_config)
 
-    payload = {
-        "size": number,
-        "query": {
-            "bool": {
-                "must": [
-                    {"query_string": {"query": filter_query}},
-                    {
-                        "range": {
-                            "@timestamp": {
-                                "gte": (
-                                    datetime.datetime.now()
-                                    - datetime.timedelta(seconds=delta)
-                                ).isoformat()
-                            }
-                        }
-                    },
-                ]
-            }
-        },
-        "sort": [{"@timestamp": "asc"}],
-    }
+    if ctx.invoked_subcommand != "profile" and user_config["default_profile"] == "":
+        error("No default profile set. Use `galen profile new` to create one.")
+        ctx.abort()
 
-    first = True
-    response = {}
-    while True:
-        if first:
-            r = requests.post(elasticsearch_endpoint, json=payload)
-            first = False
-        else:
-            if len(response["hits"]["hits"]):
-                payload["search_after"] = response["hits"]["hits"][-1]["sort"]
-            r = requests.post(elasticsearch_endpoint, json=payload)
+    ctx.obj["config"] = user_config
 
-        response = r.json()
-
-        if not len(response["hits"]["hits"]):
-            time.sleep(ticker)
-            continue
-
-        if r.status_code != 200:
-            error("Error %d querying Kibana." % r.status_code)
-            error(r.text)
-            time.sleep(ticker)
-            continue
-
-        if response["hits"]["total"]["value"] == 0:
-            time.sleep(ticker)
-            continue
-
-        for item in response["hits"]["hits"]:
-            click.secho(item["_source"]["@timestamp"] + "\t- ", fg="blue", nl=False)
-            click.echo(item["_source"]["message"].strip())
-        time.sleep(ticker)
-
-if __name__ == "__main__":
-    main.add_command(tail)
-    main()
+    if profile is None:
+        ctx.obj["profile"] = user_config["default_profile"]
+    elif profile not in user_config["profiles"]:
+        error(f"Profile {profile} not found.")
+        ctx.abort()
+    else:
+        ctx.obj["profile"] = profile
